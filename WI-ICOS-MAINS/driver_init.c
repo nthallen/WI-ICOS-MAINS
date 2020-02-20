@@ -17,7 +17,9 @@
 struct usart_async_descriptor USART_CTRL;
 struct can_async_descriptor   CAN_CTRL;
 
+#if 0
 static uint8_t USART_CTRL_buffer[USART_CTRL_BUFFER_SIZE];
+#endif
 
 struct i2c_m_async_desc I2C_P;
 
@@ -125,6 +127,7 @@ void USART_CTRL_PORT_init()
 	gpio_set_pin_function(URXFTX, PINMUX_PB23D_SERCOM5_PAD3);
 }
 
+#if 0
 /**
  * \brief USART initialization function
  *
@@ -136,6 +139,7 @@ void USART_CTRL_init(void)
 	usart_async_init(&USART_CTRL, SERCOM5, USART_CTRL_buffer, USART_CTRL_BUFFER_SIZE, (void *)NULL);
 	USART_CTRL_PORT_init();
 }
+#endif
 
 void CAN_CTRL_PORT_init(void)
 {
