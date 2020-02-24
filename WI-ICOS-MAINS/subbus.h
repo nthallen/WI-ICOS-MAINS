@@ -65,6 +65,7 @@ typedef struct {
 bool subbus_add_driver(subbus_driver_t *driver);
 extern subbus_driver_t sb_base;
 extern subbus_driver_t sb_fail_sw;
+extern subbus_driver_t sb_board_desc;
 
 /**
  * Fully qualified check that the specified subbus address is both

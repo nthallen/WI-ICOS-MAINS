@@ -1,5 +1,6 @@
 /* subbus.c for Atmel Studio
  */
+#include <string.h>
 #include "subbus.h"
 
 static subbus_driver_t *drivers[SUBBUS_MAX_DRIVERS];
@@ -190,3 +191,43 @@ bool subbus_cache_was_read(subbus_driver_t *drv, uint16_t addr) {
 bool sb_cache_was_read(subbus_cache_word_t *cache, uint16_t offset) {
   return cache[offset].was_read;
 }
+
+extern subbus_driver_t sb_board_desc;
+
+static subbus_cache_word_t board_desc_cache[2] = {
+  { 0, 0, true, false, false, false, false },
+  { 0, 0, true, false, false, false, true }
+};
+
+static struct board_desc_t {
+  const char *desc;
+  int cp;
+  int nc;
+} board_desc;
+
+static void board_desc_init(void) {
+  board_desc.desc = SUBBUS_BOARD_REV;
+  board_desc.cp = 0;
+  board_desc.nc = strlen(board_desc.desc)+1; // Include the trailing NUL
+  subbus_cache_update(&sb_board_desc, SUBBUS_DESC_FIFO_SIZE_ADDR, (board_desc.nc+1)/2);
+  subbus_cache_update(&sb_board_desc, SUBBUS_DESC_FIFO_ADDR,
+    (board_desc.desc[0] & 0xFF) + (board_desc.desc[1]<<8));
+}
+
+static void board_desc_action(void) {
+  if (board_desc_cache[1].was_read) {
+    board_desc.cp += 2;
+    if (board_desc.cp >= board_desc.nc) {
+      board_desc.cp = 0;
+    }
+  }
+  subbus_cache_update(&sb_board_desc, SUBBUS_DESC_FIFO_SIZE_ADDR,
+    ((board_desc.nc-board_desc.cp)+1)/2);
+  subbus_cache_update(&sb_board_desc, SUBBUS_DESC_FIFO_ADDR,
+    (board_desc.desc[board_desc.cp] & 0xFF) + (board_desc.desc[board_desc.cp+1]<<8));
+}
+
+subbus_driver_t sb_board_desc = {
+  SUBBUS_DESC_FIFO_SIZE_ADDR, SUBBUS_DESC_FIFO_ADDR,
+  board_desc_cache, board_desc_init, 0, board_desc_action,
+  false };
