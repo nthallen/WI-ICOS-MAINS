@@ -41,7 +41,7 @@ static subbus_cache_word_t i2c_cache[I2C_HIGH_ADDR-I2C_BASE_ADDR+1] = {
 
 enum ads_state_t {ads_init, ads_init_tx, ads_read_cfg,
                   ads_read_cfg_tx, ads_reg0, ads_read_adc,
-                  ads_read_adc_tx};
+                  ads_read_adc_tx, ads_next_chan};
 
 /** Write to config register [01] 0x83 0x03:
  *   0x01: Pointer register value specifying config register
@@ -85,23 +85,23 @@ enum ads_state_t {ads_init, ads_init_tx, ads_read_cfg,
  */
 
 typedef struct {
-  uint16_t offset,
-  uint16_t bit_mask,
-  uint16_t i2c_address,
-  uint16_t ads_config
+  uint16_t offset;
+  uint16_t bit_mask;
+  uint16_t i2c_address;
+  uint16_t ads_config;
 } ads_channel_t;
 
 ads_channel_t ads_chans[10] = {
-  { 2, 0x0001, 0x48, 0xB303 }, // CH0V, AIN2/AIN3, +/-4.096V
-  { 3, 0x0002, 0x48, 0x8303 }, // CH1V, AIN0/AIN1, +/-4.096V
-  { 4, 0x0004, 0x49, 0xB303 }, // CH2V, AIN2/AIN3, +/-4.096V
-  { 5, 0x0008, 0x49, 0x8303 }, // CH3V, AIN0/AIN1, +/-4.096V
-  { 6, 0x0010, 0x4A, 0xB303 }, // CH4V PMotT, AIN2/AIN3, +/-4.096V
-  { 7, 0x0020, 0x4A, 0x8303 }, // CH5V PumpT, AIN0/AIN1, +/-4.096V
-  { 8, 0x0040, 0x48, 0x8103 }, // V80_V, AIN0/AIN1, +/-6.144V
-  { 9, 0x0080, 0x48, 0xBB03 }, // V80_I, AIN2/AIN3, +/-0.256V
-  {10, 0x0100, 0x49, 0x8303 }, // V28C1_V, AIN0/AIN1, +/-4.096V
-  {11, 0x0200, 0x49, 0xB303 }, // V28C2_V, AIN2/AIN3, +/-4.096V
+  { 0, 0x0001, 0x48, 0xB303 }, // CH0V, AIN2/AIN3, +/-4.096V
+  { 1, 0x0002, 0x48, 0x8303 }, // CH1V, AIN0/AIN1, +/-4.096V
+  { 2, 0x0004, 0x49, 0xB303 }, // CH2V, AIN2/AIN3, +/-4.096V
+  { 3, 0x0008, 0x49, 0x8303 }, // CH3V, AIN0/AIN1, +/-4.096V
+  { 4, 0x0010, 0x4A, 0xB303 }, // CH4V PMotT, AIN2/AIN3, +/-4.096V
+  { 5, 0x0020, 0x4A, 0x8303 }, // CH5V PumpT, AIN0/AIN1, +/-4.096V
+  { 6, 0x0040, 0x48, 0x8103 }, // V80_V, AIN0/AIN1, +/-6.144V
+  { 7, 0x0080, 0x48, 0xBB03 }, // V80_I, AIN2/AIN3, +/-0.256V
+  { 8, 0x0100, 0x49, 0x8303 }, // V28C1_V, AIN0/AIN1, +/-4.096V
+  { 9, 0x0200, 0x49, 0xB303 }, // V28C2_V, AIN2/AIN3, +/-4.096V
 };
 
 /** i2c error codes are defined in hal/include/hpl_i2c_m_sync.h
@@ -122,8 +122,8 @@ typedef struct {
   uint8_t ads_ibuf[2];
 } i2c_chain_t;
 
-i2c_chain_t I2C_T_chain = { &I2C_T, 0, &chans[0], 6, 0, true, false, ads_init, 0, I2C_OK, {0, 0, 0}, {0, 0}};
-i2c_chain_t I2C_P_chain = { &I2C_P, 0, &chans[6], 4, 0, true, false, ads_init, 0, I2C_OK, {0, 0, 0}, {0, 0}};
+i2c_chain_t I2C_T_chain = { &I2C_T, 0, &ads_chans[0], 6, 0, true, false, ads_init, 0, I2C_OK, {0, 0, 0}, {0, 0}};
+i2c_chain_t I2C_P_chain = { &I2C_P, 0, &ads_chans[6], 4, 0, true, false, ads_init, 0, I2C_OK, {0, 0, 0}, {0, 0}};
 
 static void ads_obuf_setup(i2c_chain_t *i2c, ads_channel_t *def, bool cfg) {
   if (cfg) {
@@ -141,7 +141,7 @@ static bool i2c_write(i2c_chain_t *i2c, ads_channel_t *def, bool cfg, enum ads_s
   i2c->txfr_complete = false;
   i2c->error_seen = false;
   ads_obuf_setup(i2c, def, cfg);
-  i2c_m_async_set_slaveaddr(i2c->i2c, def->i2c_addr, I2C_M_SEVEN);
+  i2c_m_async_set_slaveaddr(i2c->i2c, def->i2c_address, I2C_M_SEVEN);
   io_write(i2c->io, i2c->ads_obuf, def ? 3 : 1);
   i2c->ads_state = next;
   return false;
@@ -152,7 +152,7 @@ static bool i2c_read(i2c_chain_t *i2c, ads_channel_t *def, enum ads_state_t next
   assert(i2c->txfr_complete, __FILE__, __LINE__);
   i2c->txfr_complete = false;
   i2c->error_seen = false;
-  i2c_m_async_set_slaveaddr(i2c, def->i2c_addr, I2C_M_SEVEN);
+  i2c_m_async_set_slaveaddr(i2c->i2c, def->i2c_address, I2C_M_SEVEN);
   io_read(i2c->io, i2c->ads_ibuf, 2);
   i2c->ads_state = next;
   return false;
@@ -194,7 +194,7 @@ static bool ads1115_poll(i2c_chain_t *i2c) {
       if (i2c->error_seen)
         i2c->ads_state = ads_next_chan;
       else {
-        sb_cache_update(i2c_cache, def->offset, (i2c->ads_ibuf[0] << 8) | i2c->ads_ibuf[1]);
+        sb_cache_update(i2c_cache, I2C_ADC_OFFSET+def->offset, (i2c->ads_ibuf[0] << 8) | i2c->ads_ibuf[1]);
         // sb_cache_update(i2c_cache, def->offset, ads_n_reads);
         i2c->ads_state = ads_init;
       }
@@ -242,7 +242,7 @@ static void I2C_P_async_error(struct i2c_m_async_desc *const i2c, int32_t error)
   }
   if (error >= -7 && error <= -2) {
     uint16_t val = i2c_cache[I2C_STATUS_OFFSET].cache;
-    val |= (1 << 8+(7+error));
+    val |= (1 << (8+7+error));
     sb_cache_update(i2c_cache, I2C_STATUS_OFFSET, val);
   }
   if (error == I2C_ERR_BUS) {
