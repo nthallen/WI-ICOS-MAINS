@@ -3,7 +3,7 @@
 #include "subbus.h"
 #include "control.h"
 #include "i2c.h"
-// #include "commands.h"
+#include "commands.h"
 
 int main(void)
 {
@@ -14,7 +14,7 @@ int main(void)
       || subbus_add_driver(&sb_fail_sw)
       || subbus_add_driver(&sb_board_desc)
       || subbus_add_driver(&sb_i2c)
-//    || subbus_add_driver(&sb_cmd)
+      || subbus_add_driver(&sb_cmd)
       || subbus_add_driver(&sb_can)
      )
   {
