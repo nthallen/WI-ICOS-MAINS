@@ -9,6 +9,7 @@ int main(void)
 {
 	/* Initializes MCU, drivers and middleware */
 	atmel_start_init();
+  uart_init();
   if (subbus_add_driver(&sb_base)
       || subbus_add_driver(&sb_fail_sw)
       || subbus_add_driver(&sb_board_desc)

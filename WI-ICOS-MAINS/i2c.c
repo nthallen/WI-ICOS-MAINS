@@ -111,8 +111,9 @@ typedef struct {
   struct i2c_m_async_desc *i2c;
   struct io_descriptor *io;
   ads_channel_t *defs;
-  int n_defs;
-  int cur_def;
+  int n_defs;  // The number of channels
+  int cur_def; // Values from 0 to n_defs - 1
+  int bit_offset; // Where status bits fall in ADC_STATUS reg
   volatile bool txfr_complete;
   volatile bool error_seen;
   enum ads_state_t ads_state;
@@ -122,9 +123,15 @@ typedef struct {
   uint8_t ads_ibuf[2];
 } i2c_chain_t;
 
-i2c_chain_t I2C_T_chain = { &I2C_T, 0, &ads_chans[0], 6, 0, true, false, ads_init, 0, I2C_OK, {0, 0, 0}, {0, 0}};
-i2c_chain_t I2C_P_chain = { &I2C_P, 0, &ads_chans[6], 4, 0, true, false, ads_init, 0, I2C_OK, {0, 0, 0}, {0, 0}};
+i2c_chain_t I2C_T_chain = { &I2C_T, 0, &ads_chans[0], 6, 0, 0, true, false, ads_init, 0, I2C_OK, {0, 0, 0}, {0, 0}};
+i2c_chain_t I2C_P_chain = { &I2C_P, 0, &ads_chans[6], 4, 0, 6, true, false, ads_init, 0, I2C_OK, {0, 0, 0}, {0, 0}};
 
+/************************************************************************/
+/* @param i2c The I2C bus we are addressing                             */
+/* @param def The channel definition (gain, rate)                       */
+/* @param cfg True if we are writing out a 3-byte configuration,        */
+/*        False if we are writing out a 1-byte register pointer.        */
+/************************************************************************/
 static void ads_obuf_setup(i2c_chain_t *i2c, ads_channel_t *def, bool cfg) {
   if (cfg) {
     i2c->ads_obuf[0] = 1;
@@ -135,6 +142,13 @@ static void ads_obuf_setup(i2c_chain_t *i2c, ads_channel_t *def, bool cfg) {
   }
 }
 
+/************************************************************************/
+/* @param i2c The I2C bus we are addressing                             */
+/* @param def The channel definition (gain, rate)                       */
+/* @param cfg True if we are writing out a 3-byte configuration,        */
+/*        False if we are writing out a 1-byte register pointer.        */
+/* @param next The transmission completed state                         */
+/************************************************************************/
 // This method is specific to this implementation of ads1115
 static bool i2c_write(i2c_chain_t *i2c, ads_channel_t *def, bool cfg, enum ads_state_t next) {
   assert(i2c->txfr_complete, __FILE__, __LINE__);
@@ -167,7 +181,10 @@ static bool ads_tx_complete(i2c_chain_t *i2c, enum ads_state_t next, enum ads_st
  * @return true if the bus is free and available for another device
  */
 static bool ads1115_poll(i2c_chain_t *i2c) {
-  ads_channel_t *def = &i2c->defs[i2c->cur_def];
+  uint16_t status;
+  ads_channel_t *def;
+  if (!i2c->txfr_complete) return false;
+  def = &i2c->defs[i2c->cur_def];
   switch (i2c->ads_state) {
     case ads_init: // Start to convert HeaterV
       i2c->ads_n_reads = 0;
@@ -195,13 +212,16 @@ static bool ads1115_poll(i2c_chain_t *i2c) {
         i2c->ads_state = ads_next_chan;
       else {
         sb_cache_update(i2c_cache, I2C_ADC_OFFSET+def->offset, (i2c->ads_ibuf[0] << 8) | i2c->ads_ibuf[1]);
-        // sb_cache_update(i2c_cache, def->offset, ads_n_reads);
-        i2c->ads_state = ads_init;
+        status = i2c_cache[I2C_ADC_STATUS_OFFSET].cache;
+        status |= 1<<(i2c->bit_offset+i2c->cur_def);
+        sb_cache_update(i2c_cache, I2C_ADC_STATUS_OFFSET, status);
+        i2c->ads_state = ads_next_chan;
       }
       return true;
     case ads_next_chan:
       if (++i2c->cur_def >= i2c->n_defs)
         i2c->cur_def = 0;
+      i2c->ads_state = ads_init;
       return false;
     default:
       assert(false, __FILE__, __LINE__);
